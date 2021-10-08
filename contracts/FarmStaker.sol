@@ -22,14 +22,27 @@ import '@openzeppelin/contracts/access/Ownable.sol';
 
 contract FarmStaker is Ownable {
     uint public rewardsBalance;         // total pool tokens available as staking rewards
+    uint public rewardsStartTime;       // time staking started (contract funded the 1st time)
+    uint public rewardsEndTime;         // time staking ends
+    uint64 public rewardsDurationDays;  // amount of days staking will be allowed after contract is funded the 1st time
     address public farmCoinAddress;     // address of the reward token
     address public stakeTokenAddress;   // address of the stake token (USDC)
+    ContractPhase stakePhase;           // contract stake phase
 
     // three lock up tiers
     enum LockupTier {
         NO_LOCKUP,
         SIX_MONTH,
         ONE_YEAR
+    }
+
+    // NOT_INITIALIZED - admin has not funded the contract yet
+    // ACTIVE - contract funded, users can stake
+    // ENDED - users can no longer stake
+    enum ContractPhase {
+        NOT_INITIALIZED,
+        ACTIVE,
+        ENDED
     }
 
     // keep record of user details
@@ -72,10 +85,13 @@ contract FarmStaker is Ownable {
     @notice Constructor: provide addresses of deployed staking token & reward token
     @param _farmCoinAddress     - address of deployed reward token
     @param _stakeTokenAddress   - address of deployed staking token
+    @param _rewardDurationDays  - number of days staking will be active
      */
-    constructor(address _farmCoinAddress, address _stakeTokenAddress) {
+    constructor(address _farmCoinAddress, address _stakeTokenAddress, uint64 _rewardDurationDays) {
+        stakePhase = ContractPhase.NOT_INITIALIZED;
         farmCoinAddress = _farmCoinAddress;
         stakeTokenAddress = _stakeTokenAddress;
+        rewardsDurationDays = _rewardDurationDays;
     }
 
     /**
@@ -85,6 +101,12 @@ contract FarmStaker is Ownable {
      */
     function fundContract(uint rewardFundAmount) external onlyOwner {
         rewardsBalance += rewardFundAmount;
+
+        if(stakePhase == ContractPhase.NOT_INITIALIZED) {
+            rewardsStartTime = block.timestamp;
+            rewardsEndTime = rewardsStartTime + (rewardsDurationDays * 1 days);
+            stakePhase = ContractPhase.ACTIVE;
+        }
 
         bool success = IERC20(farmCoinAddress).transferFrom(msg.sender, address(this), rewardFundAmount);
         require(success, "FarmStaker#fundContract: Farm coin transfer failed");
