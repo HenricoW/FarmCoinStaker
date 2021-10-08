@@ -50,6 +50,22 @@ contract FarmStaker is Ownable {
      */
     event ContractFunded(uint fundAmount, uint totalRewards); // two values will differ for top-ups (post initial fund)
 
+    /** 
+    @notice Event: user stakes
+    @param userAddr         - user address
+    @param remainingStake   - updated total stake
+    @param latestRewardBal  - latest pending reward calculated
+     */
+    event UserStaked(address indexed userAddr, uint remainingStake, uint latestRewardBal); // two values will differ for top-ups (post initial fund)
+
+    /** 
+    @notice Event: user unstakes
+    @param userAddr         - user address
+    @param remainingStake   - updated total stake
+    @param latestRewardBal  - latest pending reward calculated
+     */
+    event UserUnstaked(address indexed userAddr, uint remainingStake, uint latestRewardBal); // two values will differ for top-ups (post initial fund)
+
     
     // ------ CONTRACT BODY ------
     /**
