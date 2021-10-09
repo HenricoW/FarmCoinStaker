@@ -7,10 +7,14 @@ pragma solidity ^0.8.4;
 
 import '@openzeppelin/contracts/token/ERC20/ERC20.sol';
 
- contract FarmCoin is ERC20 {
-     constructor () ERC20("FarmCoin", "FCT") {}
+ contract mUSC is ERC20 {
+     constructor () ERC20("Mock USDC", "mUSDC") {}
 
      function faucet(uint amount) external {
          _mint(msg.sender, amount);
+     }
+
+     function decimals() override public pure returns(uint8){
+         return 6;
      }
  }
