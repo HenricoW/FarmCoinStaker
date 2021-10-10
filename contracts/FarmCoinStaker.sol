@@ -16,7 +16,7 @@ contract FarmCoinStaker is Ownable {
     ContractPhase public stakePhase;    // contract stake phase
 
     // keep record of the locker contracts
-    string[] public lockerTypes;        // locker type names
+    string[] public lockerNames;        // locker type names
     mapping(string => StakeLocker) public stakeLockers; // type name => locker
 
     // INITIALIZED - tokens set, contract not funded
@@ -52,8 +52,15 @@ contract FarmCoinStaker is Ownable {
         require(success, "FarmStaker#fundContract: Farm coin transfer failed"); // may be unnecessary
     }
 
-    // create a locker contract 
-    function createLocker(string memory lockerName, uint lockDurationDays, uint rewardRate, uint penaltyRate) external onlyOwner {}
+    // create a locker, set lockDurationDays = 0 for no lockup
+    function createLocker(string memory lockerName, uint lockDurationDays, uint rewardRate, uint penaltyRate) external onlyOwner {
+        require(bytes(lockerName).length > 0, "FarmCoinStaker#createLocker: Locker name cannot be empty");
+        require(rewardRate > 0, "FarmCoinStaker#createLocker: Reward rate percentage cannot be zero");
+
+        lockerNames.push(lockerName);
+        StakeLocker locker = new StakeLocker(lockDurationDays, rewardRate, penaltyRate);
+        stakeLockers[lockerName] = locker;
+    }
 
     // stake to a specified locker contract (calls stake on that locker)
     function stake(string memory lockerName, uint amountUSDC) external {}
@@ -63,8 +70,11 @@ contract FarmCoinStaker is Ownable {
 
     // HELPERS
     // ---------
-    // get all locker types
-    function getLockerNames() external view returns(string[] memory) {}
+    // get all locker names
+    function getLockerNames() external view returns(string[] memory) {
+        return lockerNames;
+    }
+
     // get total staked accross all lockers
     function allLockerStaked() external view returns(uint) {}
 
