@@ -2,6 +2,7 @@
 pragma solidity ^0.8.4;
 
 import '@openzeppelin/contracts/access/Ownable.sol';
+import { StakeLib } from './StakeLib.sol';
 
 /**
 * @notice For creating stake locking contracts. Only owner can make state changes
@@ -17,13 +18,7 @@ contract StakeLocker is Ownable {
     uint16 public constant DEFAULT_STAKETIME = 1000;    // for resetting Record on claimAll()
     
     address[] private userAddresses;
-    mapping(address => Record) userRecords;
-
-    struct Record {
-        uint stakeBal;              // current stake balance
-        uint priorStakeTime;        // timestamp of when last stake started
-        uint unclaimedReward;       // to not wipe out rewards if staking after 1st stake matured & didn't claim
-    }
+    mapping(address => StakeLib.Record) userRecords;
 
     /**
      * @notice Constructor: Sets up new stake lock contract
@@ -39,7 +34,7 @@ contract StakeLocker is Ownable {
 
     // transfers are done in the main contract, which holds all funds, this contract only tracks this locker's users' stake state
     function stake(uint amount, address user) external onlyOwner {
-        Record memory userRec = userRecords[user];
+        StakeLib.Record memory userRec = userRecords[user];
 
         // if already staked
         uint calculatedReward;
@@ -57,7 +52,7 @@ contract StakeLocker is Ownable {
         // if new staker, add to user array
         if(userRec.priorStakeTime == 0) userAddresses.push(user);
         // create/update user record
-        userRecords[user] = Record({
+        userRecords[user] = StakeLib.Record({
             stakeBal: userRec.stakeBal + amount,
             priorStakeTime: block.timestamp,
             unclaimedReward: userRec.unclaimedReward + calculatedReward
@@ -67,7 +62,7 @@ contract StakeLocker is Ownable {
     // only does full unstakes
     // transfers are done in the main contract, which holds all funds, this contract only tracks this locker's users' stake state
     function unstakeAll(address user) external onlyOwner returns(uint, uint) {
-        Record memory userRec = userRecords[user];
+        StakeLib.Record memory userRec = userRecords[user];
         // if no user record or nothing staked (has record, but all claimed), revert
         require(userRec.stakeBal > 0, "StakeLocker#unstake: Nothing to unstake");
         // if not after maturity, calculate penalty
@@ -82,7 +77,7 @@ contract StakeLocker is Ownable {
         totRewardsClaimed += rewardAmount;
 
         // update user record
-        userRecords[user] = Record({
+        userRecords[user] = StakeLib.Record({
             stakeBal: 0,
             priorStakeTime: DEFAULT_STAKETIME,             // dummy value so this user isn't added to user array again upon subsequent staking (see stake fn)
             unclaimedReward: 0
@@ -115,7 +110,7 @@ contract StakeLocker is Ownable {
         return userAddresses;
     }
 
-    function getUserRecord(address user) external view returns(Record memory) {
+    function getUserRecord(address user) external view returns(StakeLib.Record memory) {
         return userRecords[user];
     }
 
