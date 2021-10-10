@@ -13,9 +13,9 @@ contract StakeLocker is Ownable {
 
     uint public totalStaked;            // cumulative total USDC staked
     uint public totRewardsClaimed;      // cumulative total farm coin claimed
+    uint public constant ONEYEAR = 365 days;
     
-
-    address[] public userAddresses;
+    address[] private userAddresses;
     mapping(address => Record) userRecords;
 
     struct Record {
@@ -74,9 +74,10 @@ contract StakeLocker is Ownable {
         // calc claim & reward amounts
         uint claimAmount = penaltyFactor * userRec.stakeBal / 100;
         uint rewardAmount = calcReward(userRec.stakeBal, userRec.priorStakeTime);
+        rewardAmount += userRec.unclaimedReward;
 
         // update totals
-        totalStaked -= claimAmount;
+        totalStaked -= userRec.stakeBal;
         totRewardsClaimed += rewardAmount;
 
         // update user record
@@ -91,12 +92,23 @@ contract StakeLocker is Ownable {
 
     // calc a user's reward for the latest stake period
     function calcReward(uint stakeBalance, uint stakeStartTime) internal view returns(uint) {
-        uint scaleFactor = 100;                                 // accuracy up to 0.01
+        uint decimalFactor = 10 ** 6;                                                           // 6 digits to 18 digits
+        
         // calc time factor (for unstakes before maturity)
-        uint timeFactor = scaleFactor * ( block.timestamp - stakeStartTime ) / lockDuration;
-        timeFactor = timeFactor > 1 ? 1 : timeFactor;
+        uint maturityTime = stakeStartTime + lockDuration;
+        uint endTime = block.timestamp > maturityTime ? maturityTime : block.timestamp;         // limit rewards to lock up period only
+        uint scaleFactor = 1000;                                                                // accuracy up to 0.001
+        uint timeFactor = scaleFactor * ( endTime - stakeStartTime ) / ONEYEAR;
 
         // calculate reward value
-        return timeFactor * rewardRate * stakeBalance / (100 * scaleFactor);
+        return timeFactor * rewardRate * stakeBalance / (100 * scaleFactor * decimalFactor);
+    }
+
+    function getUserAddresses() external view returns(address[] memory) {
+        return userAddresses;
+    }
+
+    function getUserRecord(address user) external view returns(Record memory) {
+        return userRecords[user];
     }
 }
