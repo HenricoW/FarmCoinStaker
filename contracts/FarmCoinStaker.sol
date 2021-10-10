@@ -4,11 +4,14 @@ pragma solidity ^0.8.4;
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import '@openzeppelin/contracts/access/Ownable.sol';
 import { StakeLocker } from './StakeLocker.sol';
+import { StakeLib } from './StakeLib.sol';
 
 contract FarmCoinStaker is Ownable {
     address public farmCoinAddress;     // address of the reward token
     address public stakeTokenAddress;   // address of the stake token (USDC)
     uint public rewardsBalance;         // total pool tokens available as staking rewards
+    uint public totalStaked;            // cumulative total USDC staked
+    uint public totRewardsClaimed;      // cumulative total farm coin claimed
 
     uint public rewardsStartTime;       // time staking started (contract funded the 1st time)
     uint public rewardsEndTime;         // time staking ends
@@ -56,14 +59,25 @@ contract FarmCoinStaker is Ownable {
     function createLocker(string memory lockerName, uint lockDurationDays, uint rewardRate, uint penaltyRate) external onlyOwner {
         require(bytes(lockerName).length > 0, "FarmCoinStaker#createLocker: Locker name cannot be empty");
         require(rewardRate > 0, "FarmCoinStaker#createLocker: Reward rate percentage cannot be zero");
+        require(address(stakeLockers[lockerName]) == address(0), "FarmCoinStaker#createLocker: Locker with that name already exists");
 
-        lockerNames.push(lockerName);
         StakeLocker locker = new StakeLocker(lockDurationDays, rewardRate, penaltyRate);
         stakeLockers[lockerName] = locker;
+        lockerNames.push(lockerName);
     }
 
     // stake to a specified locker contract (calls stake on that locker)
-    function stake(string memory lockerName, uint amountUSDC) external {}
+    function stake(string memory lockerName, uint stakeAmount) external {
+        require(stakeAmount > 0, "FarmCoinStaker#stake: Deposit value cannot be zero");
+        StakeLocker locker = stakeLockers[lockerName];
+        require(address(locker) != address(0), "FarmCoinStaker#stake: No locker with that name");
+
+        // update global and locker state
+        totalStaked += stakeAmount;
+        locker.stake(stakeAmount, msg.sender);
+
+        IERC20(stakeTokenAddress).transferFrom(msg.sender, address(this), stakeAmount);
+    }
 
     // unstake from a specified locker contract (calls unstake on that locker)
     function unstake(string memory lockerName, uint amountUSDC) external {}
@@ -75,9 +89,25 @@ contract FarmCoinStaker is Ownable {
         return lockerNames;
     }
 
+    // get locker properties
+    function getLockerDetail(string memory lockerName) external view returns(string memory, address, uint, uint, uint) {
+        StakeLocker locker = stakeLockers[lockerName];
+        require(address(locker) != address(0), "FarmCoinStaker#getLockerDetail: No locker with that name");
+
+        return (lockerName, address(locker), locker.lockDuration(), locker.rewardRate(), locker.penaltyRate());
+    }
+
+    // get user record, given the locker
+    function getUserRecord(string memory lockerName, address user) external view returns(StakeLib.Record memory) {
+        StakeLocker locker = stakeLockers[lockerName];
+        require(address(locker) != address(0), "FarmCoinStaker#getUserRecord: No locker with that name");
+
+        return locker.getUserRecord(user);
+    }
+
     // get total staked accross all lockers
-    function allLockerStaked() external view returns(uint) {}
+    // function allLockerStaked() external view returns(uint) {}
 
     // get total claimed accross all lockers
-    function allLockerClaimed() external view returns(uint) {}
+    // function allLockerClaimed() external view returns(uint) {}
 }
