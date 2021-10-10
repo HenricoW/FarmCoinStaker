@@ -14,6 +14,7 @@ contract StakeLocker is Ownable {
     uint public totalStaked;            // cumulative total USDC staked
     uint public totRewardsClaimed;      // cumulative total farm coin claimed
     uint public constant ONEYEAR = 365 days;
+    uint16 public constant DEFAULT_STAKETIME = 1000;    // for resetting Record on claimAll()
     
     address[] private userAddresses;
     mapping(address => Record) userRecords;
@@ -42,7 +43,7 @@ contract StakeLocker is Ownable {
 
         // if already staked
         uint calculatedReward;
-        if(userRec.priorStakeTime > 0) {
+        if(userRec.stakeBal > 0) {
             // if not matured, revert
             require(block.timestamp > userRec.priorStakeTime + lockDuration, "StakeLocker#stake: Already have a locked up stake that has not matured");
 
@@ -53,7 +54,7 @@ contract StakeLocker is Ownable {
         // update totals
         totalStaked += amount;
 
-        // if new staker add to user array
+        // if new staker, add to user array
         if(userRec.priorStakeTime == 0) userAddresses.push(user);
         // create/update user record
         userRecords[user] = Record({
@@ -83,7 +84,7 @@ contract StakeLocker is Ownable {
         // update user record
         userRecords[user] = Record({
             stakeBal: 0,
-            priorStakeTime: block.timestamp,                    // not reset so this user is not added to user array again upon subsequent staking (see stake fn)
+            priorStakeTime: DEFAULT_STAKETIME,             // dummy value so this user isn't added to user array again upon subsequent staking (see stake fn)
             unclaimedReward: 0
         });
 
@@ -92,18 +93,24 @@ contract StakeLocker is Ownable {
 
     // calc a user's reward for the latest stake period
     function calcReward(uint stakeBalance, uint stakeStartTime) internal view returns(uint) {
-        uint decimalFactor = 10 ** 6;                                                           // 6 digits to 18 digits
-        
         // calc time factor (for unstakes before maturity)
-        uint maturityTime = stakeStartTime + lockDuration;
-        uint endTime = block.timestamp > maturityTime ? maturityTime : block.timestamp;         // limit rewards to lock up period only
+        uint endTime;
+        if(lockDuration == 0) {
+            endTime = block.timestamp;                                                          // for no lockup
+        } else {
+            uint maturityTime = stakeStartTime + lockDuration;
+            endTime = block.timestamp > maturityTime ? maturityTime : block.timestamp;          // limit rewards to lock up period only
+        }
+        
         uint scaleFactor = 1000;                                                                // accuracy up to 0.001
         uint timeFactor = scaleFactor * ( endTime - stakeStartTime ) / ONEYEAR;
 
         // calculate reward value
+        uint decimalFactor = 10 ** 6;                                                           // 6 to 18
         return timeFactor * rewardRate * stakeBalance / (100 * scaleFactor * decimalFactor);
     }
 
+    // HELPERS
     function getUserAddresses() external view returns(address[] memory) {
         return userAddresses;
     }
@@ -111,4 +118,7 @@ contract StakeLocker is Ownable {
     function getUserRecord(address user) external view returns(Record memory) {
         return userRecords[user];
     }
+
+    // function changePenaltyRate() external onlyOwner {}
+    // function changeRewardRate() external onlyOwner {}
 }
