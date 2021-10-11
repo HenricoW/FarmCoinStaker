@@ -20,6 +20,8 @@ contract StakeLocker is Ownable {
     address[] private userAddresses;
     mapping(address => StakeLib.Record) userRecords;
 
+    event Unstaking(address user, uint stakeAmount);
+
     /**
      * @notice Constructor: Sets up new stake lock contract
      * @param _lockDurationInDays   - number of days this contract locks up stakes
@@ -101,8 +103,7 @@ contract StakeLocker is Ownable {
         uint timeFactor = scaleFactor * ( endTime - stakeStartTime ) / ONEYEAR;
 
         // calculate reward value
-        uint decimalFactor = 10 ** 6;                                                           // 6 to 18
-        return timeFactor * rewardRate * stakeBalance / (100 * scaleFactor * decimalFactor);
+        return timeFactor * rewardRate * stakeBalance / (100 * scaleFactor);
     }
 
     // HELPERS

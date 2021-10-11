@@ -57,7 +57,7 @@ contract FarmCoinStaker is Ownable, ReentrancyGuard {
     }
 
     // create a locker, set lockDurationDays = 0 for no lockup
-    function createLocker(string memory lockerName, uint lockDurationDays, uint rewardRate, uint penaltyRate) external onlyOwner {
+    function createLocker(string memory lockerName, uint lockDurationDays, uint rewardRate, uint penaltyRate) public onlyOwner {
         require(bytes(lockerName).length > 0, "FarmCoinStaker#createLocker: Locker name cannot be empty");
         require(rewardRate > 0, "FarmCoinStaker#createLocker: Reward rate percentage cannot be zero");
         require(address(stakeLockers[lockerName]) == address(0), "FarmCoinStaker#createLocker: Locker with that name already exists");
@@ -92,7 +92,7 @@ contract FarmCoinStaker is Ownable, ReentrancyGuard {
         // update locker and global state
         (uint unstakeAmt, uint rewardAmt) = locker.unstakeAll(msg.sender);  // penalty applied, if need be
         totalStaked -= uRecord.stakeBal;                                    // use full amount even if penalised, (USDC balance(this) - totalStaked) = tot. penalties
-        totRewardsClaimed -= rewardAmt;
+        totRewardsClaimed += rewardAmt;
 
         IERC20(stakeTokenAddress).transfer(msg.sender, unstakeAmt);
         IERC20(farmCoinAddress).transfer(msg.sender, rewardAmt);
@@ -100,6 +100,14 @@ contract FarmCoinStaker is Ownable, ReentrancyGuard {
 
     // HELPERS
     // ---------
+
+    // setup() - sets initial 3 lock up pools (no lockup, 6 month, 1 year)
+    function setup() external onlyOwner {
+        createLocker("NO_LOCKUP",  0,   10, 0 );
+        createLocker("SIX_MONTHS", 182, 20, 10);
+        createLocker("ONE_YEAR",   365, 30, 10);
+    }
+
     // get all locker names
     function getLockerNames() external view returns(string[] memory) {
         return lockerNames;
