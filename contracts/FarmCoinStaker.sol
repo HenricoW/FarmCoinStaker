@@ -3,10 +3,11 @@ pragma solidity ^0.8.4;
 
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import '@openzeppelin/contracts/access/Ownable.sol';
+import '@openzeppelin/contracts/security/ReentrancyGuard.sol';
 import { StakeLocker } from './StakeLocker.sol';
 import { StakeLib } from './StakeLib.sol';
 
-contract FarmCoinStaker is Ownable {
+contract FarmCoinStaker is Ownable, ReentrancyGuard {
     address public farmCoinAddress;     // address of the reward token
     address public stakeTokenAddress;   // address of the stake token (USDC)
     uint public rewardsBalance;         // total pool tokens available as staking rewards
@@ -45,7 +46,7 @@ contract FarmCoinStaker is Ownable {
     function fundContract(uint rewardFundAmount) external onlyOwner {
         rewardsBalance += rewardFundAmount;
 
-        if(stakePhase == ContractPhase.INITIALIZED) {
+        if(stakePhase == ContractPhase.INITIALIZED || stakePhase == ContractPhase.ENDED) {
             rewardsStartTime = block.timestamp;
             rewardsEndTime = rewardsStartTime + (rewardsDurationDays * 1 days);
             stakePhase = ContractPhase.ACTIVE;
@@ -81,7 +82,21 @@ contract FarmCoinStaker is Ownable {
     }
 
     // unstake from a specified locker contract (calls unstake on that locker)
-    function unstake(string memory lockerName, uint amountUSDC) external {}
+    function unstakeAll(string memory lockerName) external nonReentrant {
+        require(stakePhase != ContractPhase.INITIALIZED, "FarmCoinStaker#unstakeAll: Wrong phase");
+        StakeLocker locker = stakeLockers[lockerName];
+        require(address(locker) != address(0), "FarmCoinStaker#unstakeAll: No locker with that name");
+
+        StakeLib.Record memory uRecord = locker.getUserRecord(msg.sender);
+
+        // update locker and global state
+        (uint unstakeAmt, uint rewardAmt) = locker.unstakeAll(msg.sender);  // penalty applied, if need be
+        totalStaked -= uRecord.stakeBal;                                    // use full amount even if penalised, (USDC balance(this) - totalStaked) = tot. penalties
+        totRewardsClaimed -= rewardAmt;
+
+        IERC20(stakeTokenAddress).transfer(msg.sender, unstakeAmt);
+        IERC20(farmCoinAddress).transfer(msg.sender, rewardAmt);
+    }
 
     // HELPERS
     // ---------
