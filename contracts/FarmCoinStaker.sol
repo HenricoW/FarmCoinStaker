@@ -68,6 +68,7 @@ contract FarmCoinStaker is Ownable {
 
     // stake to a specified locker contract (calls stake on that locker)
     function stake(string memory lockerName, uint stakeAmount) external {
+        require(stakePhase == ContractPhase.ACTIVE, "FarmCoinStaker#stake: Staking phase not active");
         require(stakeAmount > 0, "FarmCoinStaker#stake: Deposit value cannot be zero");
         StakeLocker locker = stakeLockers[lockerName];
         require(address(locker) != address(0), "FarmCoinStaker#stake: No locker with that name");
@@ -98,11 +99,19 @@ contract FarmCoinStaker is Ownable {
     }
 
     // get user record, given the locker
-    function getUserRecord(string memory lockerName, address user) external view returns(StakeLib.Record memory) {
+    function getLockerUserRecord(string memory lockerName, address user) external view returns(StakeLib.Record memory) {
         StakeLocker locker = stakeLockers[lockerName];
         require(address(locker) != address(0), "FarmCoinStaker#getUserRecord: No locker with that name");
 
         return locker.getUserRecord(user);
+    }
+
+    // get user array, given the locker
+    function getLockerUserArray(string memory lockerName) external view returns(address[] memory) {
+        StakeLocker locker = stakeLockers[lockerName];
+        require(address(locker) != address(0), "FarmCoinStaker#getUserRecord: No locker with that name");
+
+        return locker.getUserAddresses();
     }
 
     // get total staked accross all lockers

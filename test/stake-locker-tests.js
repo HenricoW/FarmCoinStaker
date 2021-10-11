@@ -4,17 +4,16 @@ const StakeLocker = artifacts.require("StakeLocker");
 
 const { expectRevert, time } = require("@openzeppelin/test-helpers");
 
-const rewardDurationDays = 5;
-
 const toWei = (val, unit = "wei") => web3.utils.toWei(val, unit);
 const fromWei = (val, unit = "wei") => web3.utils.fromWei(val, unit);
+
+const lockDuration = 365; // days
+const rewardRate = 10; // percent
+const penaltyRate = 15; // percent
 
 contract("StakeLocker", async (accounts) => {
   const [admin, user1, user2, _] = accounts;
 
-  const lockDuration = 365; // days
-  const rewardRate = 10; // percent
-  const penaltyRate = 15; // percent
   let sLocker, fCoin, musdc;
   beforeEach(async () => {
     musdc = await mUSC.new();
@@ -28,9 +27,10 @@ contract("StakeLocker", async (accounts) => {
     await musdc.faucet(mintAmount, { from: user2 });
   });
 
-  // TEST STAKING
   if (false) {
   }
+  // ----------- STAKES WITH LOCKUP -----------
+  // TEST STAKING
   // PASSES
   it("should have the correct deploy parameters", async () => {
     const owner = await sLocker.owner();
@@ -66,7 +66,7 @@ contract("StakeLocker", async (accounts) => {
   });
 
   // PASSES
-  it("should record stake info - lockup: different users", async () => {
+  it("should record stake info - lockup: multiple users", async () => {
     const fundAmt1 = 1000;
     const fundAmt2 = 500;
     await sLocker.stake(toWei(fundAmt1.toString(), "mwei"), user1);
@@ -102,7 +102,8 @@ contract("StakeLocker", async (accounts) => {
   });
 
   // TEST UNSTAKING
-  it("should unstake after maturity without penalty", async () => {
+  // PASSES
+  it("should unstake after maturity without penalty - lockup", async () => {
     // stake
     const stakeAmount = 1000;
     const fundAmount = toWei(stakeAmount.toString(), "mwei");
@@ -128,7 +129,7 @@ contract("StakeLocker", async (accounts) => {
   });
 
   // PASSES
-  it("should penalize early unstake", async () => {
+  it("should penalize early unstake - lockup", async () => {
     // stake
     const stakeAmount = 1000;
     const fundAmount = toWei(stakeAmount.toString(), "mwei");
@@ -150,4 +151,6 @@ contract("StakeLocker", async (accounts) => {
     assert(fromWei(totStake, "mwei") === "0");
     assert(fromWei(totClaim) === "0");
   });
+
+  // ----------- STAKES WITH NO LOCKUP -----------
 });
