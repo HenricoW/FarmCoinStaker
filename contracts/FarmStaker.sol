@@ -34,16 +34,16 @@ import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import '@openzeppelin/contracts/access/Ownable.sol';
 
 contract FarmStaker is Ownable {
-    uint public rewardsBalance;         // total pool tokens available as staking rewards
-    uint public totalStaked;            // total stake tokens (USDC) staked
-    uint public rewardsStartTime;       // time staking started (contract funded the 1st time)
-    uint public rewardsEndTime;         // time staking ends
-    uint public constant ONE_YEAR = 365 days;
-    // rewardsDurationDays set once & read once -> packed with address into same storage slot
-    uint64 public rewardsDurationDays;  // amount of days staking will be allowed after contract is funded the 1st time
+    // one slot per variable a.f.a.p.
     address public farmCoinAddress;     // address of the reward token
     address public stakeTokenAddress;   // address of the stake token (USDC)
-    ContractPhase stakePhase;           // contract stake phase
+    uint public rewardsBalance;         // total pool tokens available as staking rewards
+    uint public totalStaked;            // total stake tokens (USDC) staked
+    uint64 public constant ONE_YEAR = 365 days; // uint64 needed for struct values, force own slot
+    uint public rewardsStartTime;       // time staking started (contract funded the 1st time)
+    uint public rewardsEndTime;         // time staking ends
+    uint public rewardsDurationDays;    // amount of days staking will be allowed after contract is funded the 1st time
+    ContractPhase public stakePhase;    // contract stake phase
 
     // INITIALIZED - tokens set, contract not funded
     // ACTIVE - contract funded, users can stake
@@ -62,10 +62,11 @@ contract FarmStaker is Ownable {
     }
 
     // keep record of user details
+    // one slot - always read, write all at once
     struct UserDetail {
-        uint stakeBalance;              // latest stake token (USDC) balance
-        uint lastActTime;               // last timestamp of stake/unstake
-        uint latestReward;              // latest (remaining) reward. Calculated at 'lastActTime'
+        uint64 stakeBalance;            // latest stake token (USDC) balance. Max: 18e18 'wei' = 18e12 USDC (6 decimals) - 6000x the current total USDC MktCap
+        uint64 lastActTime;             // last timestamp of stake/unstake - uint40.max >> seconds to 31 Dec 9999 since Epoch, therefore, uint64 sufficient
+        uint120 latestReward;           // latest (remaining) FarmCoin reward. Calculated at 'lastActTime'. Max: 1.3e36 'wei' = 1.3e18 (18 decimals)
         LockupTier lockupLength;        // user's lock up tier
     }
 
@@ -130,27 +131,45 @@ contract FarmStaker is Ownable {
         emit ContractFunded(rewardFundAmount, rewardsBalance);
     }
 
-    function stake(uint stakeAmount) external {
+    function stake(uint64 stakeAmount, uint8 stakeTier) external {
+        // check staking phase
+
         // update globals
         totalStaked += stakeAmount;
 
-        // update user's record
-        UserDetail memory userInfo = userRecords[msg.sender];                   // for memeory reads: less gas than storage reads
+        // get user's record
+        UserDetail memory userInfo = userRecords[msg.sender];                   // memory reads: less gas than storage reads
+        uint64 tsNow = uint64(block.timestamp);                                 // uint40.max >> seconds to 31 Dec 9999 since Epoch, therefore, uint64 sufficient
 
-        uint updatedReward;
+        // if already staked & locked up, can only stake if after lock up maturity
+        bool hasLockedupStake = userInfo.stakeBalance > 0 && userInfo.lockupLength != LockupTier.NO_LOCKUP;
+        if(hasLockedupStake) {
+            uint64 lockupDuration = userInfo.lockupLength == LockupTier.SIX_MONTH ? 182 days : 365 days;
+            uint64 maturityDate = userInfo.lastActTime + lockupDuration;
+            require(tsNow > maturityDate, "FarmStaker#stake: Already have a locked up stake that has not matured");
+        }
+        
+        // here: new staker or returning with no lock up or lock up that has matured
+        // for returning stakers: make sure the stakeTier is the same
+
+        // TODO: move to separate function
+        // TODO: fix - stakeBalance is USDC - 6 decimals
+        uint120 updatedReward;
         if(userInfo.lastActTime > 0) {
             // update reward calculation if already staked before
-            uint timeInterval = block.timestamp - userInfo.lastActTime;         // in seconds
-            uint rewardAPY = (uint(userInfo.lockupLength) + 1) * 10;            // in percent
-            uint rewardDelta = (timeInterval / ONE_YEAR) * userInfo.stakeBalance * rewardAPY / 100;
+            uint64 timeInterval = tsNow - userInfo.lastActTime;
+            uint16 rewardAPY = (uint8(userInfo.lockupLength) + 1) * 10;         // in percent
+            uint120 rewardDelta = (timeInterval / ONE_YEAR) * userInfo.stakeBalance * rewardAPY / 100; // ( 2^(64 - 35 + 64 + 16) / 100 ) = (2^109 / 100) [1 yr ~= 2^35 seconds]
             updatedReward = userInfo.latestReward + rewardDelta;
         }
 
+        // if returning staker, make sure stakeTier is the same as before
+
         userRecords[msg.sender] = UserDetail({
             stakeBalance: userInfo.stakeBalance + stakeAmount, 
-            lastActTime: block.timestamp, 
+            lastActTime: tsNow, 
             latestReward: updatedReward, 
-            lockupLength: userInfo.lockupLength
+            lockupLength: LockupTier(stakeTier)
         });
 
         bool success = IERC20(stakeTokenAddress).transferFrom(msg.sender, address(this), stakeAmount);
