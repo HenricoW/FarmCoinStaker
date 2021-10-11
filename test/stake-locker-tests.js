@@ -87,6 +87,33 @@ contract("StakeLocker", async (accounts) => {
     assert(fromWei(totClaim) === "0");
   });
 
+  it("should allow stake - lockup: same user, stake again after matured", async () => {
+    // start staking
+    const stakeAmount = toWei("300", "mwei");
+    await sLocker.stake(stakeAmount, user1);
+
+    // const userRecord0 = await sLocker.getUserRecord(user1);
+    // console.log("sl - user balance: ", fromWei(userRecord0.stakeBal, "mwei"));
+
+    time.increase(time.duration.days(lockDuration + 1));
+
+    await sLocker.stake(stakeAmount, user1);
+
+    const userAddrs = await sLocker.getUserAddresses();
+    const userRecord = await sLocker.getUserRecord(user1);
+    const totStake = await sLocker.totalStaked();
+    const totClaim = await sLocker.totRewardsClaimed();
+
+    // console.log("sl - unclaimedReward: ", fromWei(userRecord.unclaimedReward));
+
+    assert(userAddrs.length === 1);
+    assert(userAddrs[0] === user1);
+    assert(fromWei(userRecord.stakeBal, "mwei") === "600");
+    assert(fromWei(userRecord.unclaimedReward, "mwei") === "30");
+    assert(fromWei(totStake, "mwei") === "600");
+    assert(fromWei(totClaim) === "0");
+  });
+
   it("should NOT allow stake - lockup: same user, multiple stakes", async () => {
     await sLocker.stake(toWei("1000", "mwei"), user1);
     let userRecord = await sLocker.getUserRecord(user1);
@@ -98,29 +125,34 @@ contract("StakeLocker", async (accounts) => {
   });
 
   // TEST UNSTAKING
-  it("should unstake after maturity without penalty - lockup", async () => {
+  it("should unstake after maturity & have correct reward amount - lockup", async () => {
     // stake
     const stakeAmount = 1000;
-    const fundAmount = toWei(stakeAmount.toString(), "mwei");
-    await sLocker.stake(fundAmount, user1);
+    const stakeAmountBN = toWei(stakeAmount.toString(), "mwei");
+    await sLocker.stake(stakeAmountBN, user1);
 
-    time.increase(time.duration.days(366));
+    const userRecord0 = await sLocker.getUserRecord(user1);
+    // console.log("user balance: ", fromWei(userRecord0.stakeBal, "mwei"));
+
+    time.increase(time.duration.days(lockDuration + 1));
 
     // unstake
     const values = await sLocker.unstakeAll.call(user1);
     await sLocker.unstakeAll(user1);
     const totStake = await sLocker.totalStaked();
     const totClaim = await sLocker.totRewardsClaimed();
-    const userRecord1 = await sLocker.getUserRecord(user1);
+    const userRecord = await sLocker.getUserRecord(user1);
+
+    // console.log("totClaim: ", fromWei(totClaim));
 
     // check return values
     assert(fromWei(values[0], "mwei") === stakeAmount.toString()); // USDC
-    assert(fromWei(values[1]) === ((stakeAmount * rewardRate) / 100).toString()); // farm coin reward - stake & immediate unstake
+    assert(fromWei(values[1], "mwei") === ((stakeAmount * rewardRate) / 100).toString());
     // check user details
-    assert(fromWei(userRecord1.stakeBal, "mwei") === "0");
+    assert(fromWei(userRecord.stakeBal, "mwei") === "0");
     // check contract totals
     assert(fromWei(totStake, "mwei") === "0");
-    assert(fromWei(totClaim) === ((stakeAmount * rewardRate) / 100).toString());
+    assert(fromWei(totClaim, "mwei") === ((stakeAmount * rewardRate) / 100).toString());
   });
 
   it("should penalize early unstake - lockup", async () => {

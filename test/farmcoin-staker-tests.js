@@ -68,6 +68,7 @@ contract("Farm staker tests", async (accounts) => {
     assert(contractPhases[parseInt(phase.toString())] === "ACTIVE");
   });
 
+  // LOCKERS
   it("should create a locker", async () => {
     const lockupDays = 7;
     const [lockerName, lockDurationDays, rewardRate, penaltyRate] = ["ONE_WEEK", lockupDays, 10, 10];
@@ -153,7 +154,8 @@ contract("Farm staker tests", async (accounts) => {
     assert(lockerDetails[2].toString() === time.duration.days(lockupDays).toString());
   });
 
-  it("should record stake info - lockup", async () => {
+  // STAKING
+  it("should allow stake - lockup", async () => {
     // create a locker
     const [lockerName, lockDurationDays, rewardRate, penaltyRate] = ["ONE_WEEK", 7, 10, 10];
     await fStaker.createLocker(lockerName, lockDurationDays, rewardRate, penaltyRate);
@@ -182,7 +184,7 @@ contract("Farm staker tests", async (accounts) => {
     assert(fromWei(totClaim) === "0");
   });
 
-  it("should record stake info - lockup: multiple users", async () => {
+  it("should allow stake - lockup: multiple users", async () => {
     // create a locker
     const [lockerName, lockDurationDays, rewardRate, penaltyRate] = ["ONE_WEEK", 7, 10, 10];
     await fStaker.createLocker(lockerName, lockDurationDays, rewardRate, penaltyRate);
@@ -219,8 +221,46 @@ contract("Farm staker tests", async (accounts) => {
     assert(fromWei(totClaim) === "0");
   });
 
+  it("should allow stake - lockup: same user, stake again after matured", async () => {
+    // create a locker
+    const [lockerName, lockDurationDays, rewardRate, penaltyRate] = ["ONE_YEAR", 365, 10, 10];
+    await fStaker.createLocker(lockerName, lockDurationDays, rewardRate, penaltyRate);
+
+    // fund the main contract
+    const fundAmount = toWei("1000");
+    await fCoin.approve(fStaker.address, fundAmount);
+    await fStaker.fundContract(fundAmount);
+
+    // start staking
+    const stakeAmount = toWei("300", "mwei");
+    await musdc.approve(fStaker.address, stakeAmount, { from: user1 });
+    await fStaker.stake(lockerName, stakeAmount, { from: user1 });
+
+    const userRecord0 = await fStaker.getLockerUserRecord(lockerName, user1);
+    // console.log("fcs - user balance: ", fromWei(userRecord0.stakeBal, "mwei"));
+
+    time.increase(time.duration.days(lockDurationDays + 1));
+
+    await musdc.approve(fStaker.address, stakeAmount, { from: user1 });
+    await fStaker.stake(lockerName, stakeAmount, { from: user1 });
+
+    const userAddrs = await fStaker.getLockerUserArray(lockerName);
+    const userRecord = await fStaker.getLockerUserRecord(lockerName, user1);
+    const totStake = await fStaker.totalStaked();
+    const totClaim = await fStaker.totRewardsClaimed();
+
+    // console.log("fcs - unclaimedReward: ", fromWei(userRecord.unclaimedReward));
+
+    assert(userAddrs.length === 1);
+    assert(userAddrs[0] === user1);
+    assert(fromWei(userRecord.stakeBal, "mwei") === "600");
+    assert(fromWei(userRecord.unclaimedReward) === "30");
+    assert(fromWei(totStake, "mwei") === "600");
+    assert(fromWei(totClaim) === "0");
+  });
+
   // to verify that StakeLocker reverts are triggered, its other reverts not tested here
-  it("should NOT allow stake - lockup: same user, multiple stakes", async () => {
+  it("should NOT allow stake - lockup: same user, before prev. stake matured", async () => {
     // create a locker
     const [lockerName, lockDurationDays, rewardRate, penaltyRate] = ["ONE_WEEK", 7, 10, 10];
     await fStaker.createLocker(lockerName, lockDurationDays, rewardRate, penaltyRate);
@@ -257,7 +297,6 @@ contract("Farm staker tests", async (accounts) => {
     assert(fromWei(totClaim) === "0");
   });
 
-  // should NOT let user stake - lockup: wrong contract phase
   it("should NOT allow stake - lockup: wrong contract phase", async () => {
     // create a locker
     const [lockerName, lockDurationDays, rewardRate, penaltyRate] = ["ONE_WEEK", 7, 10, 10];
@@ -284,7 +323,6 @@ contract("Farm staker tests", async (accounts) => {
     assert(fromWei(totClaim) === "0");
   });
 
-  // should NOT let user stake - lockup: zero deposit
   it("should NOT allow stake - lockup: zero deposit", async () => {
     // create a locker
     const [lockerName, lockDurationDays, rewardRate, penaltyRate] = ["ONE_WEEK", 7, 10, 10];
@@ -316,7 +354,6 @@ contract("Farm staker tests", async (accounts) => {
     assert(fromWei(totClaim) === "0");
   });
 
-  // should NOT let user stake - lockup: no locker
   it("should NOT allow stake - lockup: no locker", async () => {
     // fund the main contract
     const fundAmount = toWei("1000");
@@ -337,8 +374,44 @@ contract("Farm staker tests", async (accounts) => {
     assert(fromWei(totClaim) === "0");
   });
 
-  //
+  // UNSTAKING
+  it("should unstake after maturity & have correct reward amount - lockup", async () => {
+    // create a locker
+    const [lockerName, lockDurationDays, rewardRate, penaltyRate] = ["ONE_YEAR", 365, 10, 10];
+    await fStaker.createLocker(lockerName, lockDurationDays, rewardRate, penaltyRate);
+
+    // fund the main contract
+    const fundAmount = toWei("1000");
+    await fCoin.approve(fStaker.address, fundAmount);
+    await fStaker.fundContract(fundAmount);
+
+    // start staking
+    const stakeAmount = toWei("1000", "mwei");
+
+    await musdc.approve(fStaker.address, stakeAmount, { from: user1 });
+    await fStaker.stake(lockerName, stakeAmount, { from: user1 });
+
+    const userRecord1 = await fStaker.getLockerUserRecord(lockerName, user1);
+
+    time.increase(time.duration.days(lockDurationDays + 1));
+
+    // unstake
+    await fStaker.unstakeAll(lockerName, { from: user1, gas: 6000000 });
+    const userRecord2 = await fStaker.getLockerUserRecord(lockerName, user1);
+    const userReward = fromWei(await fCoin.balanceOf(user1));
+
+    const totStake = await fStaker.totalStaked();
+    const totClaim = await fStaker.totRewardsClaimed();
+    // console.log("expected totClaim: ", (parseInt(fromWei(stakeAmount, "mwei")) * rewardRate) / 100);
+
+    // check user values
+    assert(fromWei(userRecord1.stakeBal, "mwei") === "1000");
+    assert(fromWei(userRecord2.stakeBal, "mwei") === "0");
+    assert(userReward === "100");
+    // check contract totals
+    assert(fromWei(totStake, "mwei") === "0");
+    assert(fromWei(totClaim) === ((parseInt(fromWei(stakeAmount, "mwei")) * rewardRate) / 100).toString());
+  });
+
   // should let user stake - no lockup
-  // should let user stake - no lockup: one user, multiple stakes
-  // should let users stake - no lockup: multiple users, multiple stakes
 });
